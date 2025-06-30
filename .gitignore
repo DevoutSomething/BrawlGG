@@ -1,0 +1,47 @@
+# Node modules (frontend + backend)
+**/node_modules/
+
+# Env files
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Log files
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE/editor stuff
+.vscode/
+.idea/
+*.swp
+
+# Build output
+frontend/build/
+frontend/dist/
+backend/dist/
+
+# Production logs
+**/logs/
+*.log
+*.out
+
+# Binaries
+*.exe
+*.out
+*.app
+*.so
+
+# Local runtime data
+.pids
+*.pid
+
+# Optional: lock files (if you don’t want to commit them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
