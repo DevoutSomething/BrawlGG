@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 
 const battleSchema = new mongoose.Schema({
   team1: [{
-    type: String, // Brawler name from Brawl Stars
+    type: String,
     required: true
   }],
   team2: [{
-    type: String, // Brawler name from Brawl Stars
+    type: String,
     required: true
   }],
   winner: {

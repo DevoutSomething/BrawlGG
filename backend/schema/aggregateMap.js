@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const aggregateMapSchema = new mongoose.Schema({
-  brawlers: { 
+  brawler: { 
     type: String,
     required: true
   },
@@ -24,5 +24,8 @@ const aggregateMapSchema = new mongoose.Schema({
     default: 0
   }
 });
+
+// Add compound unique index for brawler, map, and mode combination
+aggregateMapSchema.index({ brawler: 1, map: 1, mode: 1 }, { unique: true });
 
 module.exports = mongoose.model('AggregateMap', aggregateMapSchema); 

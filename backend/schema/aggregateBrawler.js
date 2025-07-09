@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const aggregateBrawlerSchema = new mongoose.Schema({
   brawler: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   wins: {
     type: Number,

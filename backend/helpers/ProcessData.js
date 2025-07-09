@@ -1,3 +1,11 @@
+const AggregateBrawler = require('../schema/aggregateBrawler');
+const AggregateMap = require('../schema/aggregateMap');
+const Battle = require('../schema/battle');
+const threeVThreeSet = new Set(["gemGrab", "bounty", "basketBrawl", "knockout", "heist", "brawlBall"])
+function normalizeTag(tag) {
+  return tag.replace(/^#/, '').replace(/^23/, '').toUpperCase();
+}
+
 const getTopPlayerIDs = async () => { 
     let data;
     try {
@@ -17,7 +25,6 @@ const getTopPlayerIDs = async () => {
     if (!data) {
         throw new Error("Unable to fetch data");
     }
-
     let items = data.items;
     let playerIDs = [];
     for (let i = 0; i < items.length; i++) {
@@ -49,8 +56,11 @@ const processUser = async (playerTag) => {
     const items = data.items;
     for (let i = 0; i < items.length; i++) {
         const event = items[i].event;
-        if (event.mode === "brawlBall") {
+        if (threeVThreeSet.has(event.mode)) {
             processBattle3v3(items[i], playerTag);
+        }
+        if (event.mode === "soloShowdown") {
+            processBattleSoloShowdown(items[i], playerTag);
         }
     }
 }
@@ -61,22 +71,60 @@ const processBattleSoloShowdown = (battleJSON) => {
     const players = battleJSON.battle.players;
     for (let i = 0; i < players.length; i++) {
         if (i <= 4){
-            brawlerWin(players[i].name, map, mode);
+            brawlerWin(players[i].brawler.name, map, mode);
         } else {
-            brawlerLoss(players[i].name, map, mode);
+            brawlerLoss(players[i].brawler.name, map, mode);
         }
     }
 
 }
 
-const brawlerWin = (brawlerName, map, mode) => { 
-    //update the database with the brawler win
+const brawlerWin = async (brawlerName, map, mode) => { 
+    try {
+        await AggregateBrawler.findOneAndUpdate(
+            { brawler: brawlerName },
+            { $inc: { wins: 1 } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error(`Error updating brawler win for ${brawlerName}:`, error);
+    }
+    try {
+        await AggregateMap.findOneAndUpdate(
+            { brawler: brawlerName, map: map, mode: mode},
+            { $inc: { wins: 1 } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error(`Error updating brawler win map and mode ${brawlerName}:`, error);
+    }
 }
 
-const brawlerLoss = (brawlerName, map, mode) => { 
-    //update the database with the brawler loss
+const brawlerLoss = async (brawlerName, map, mode) => { 
+    try {
+        await AggregateBrawler.findOneAndUpdate(
+            { brawler: brawlerName },
+            { $inc: { losses: 1 } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error(`Error updating brawler loss for ${brawlerName}:`, error);
+    }
+    try {
+        await AggregateMap.findOneAndUpdate(
+            { brawler: brawlerName, map: map, mode: mode},
+            { $inc: { losses: 1 } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error(`Error updating brawler loss map and mode ${brawlerName}:`, error);
+    }
 }
-const processBattle3v3 = (battleJSON, playerTag) => { 
+
+
+
+
+const processBattle3v3 = async (battleJSON, playerTag) => { 
     const battle = battleJSON.battle;
     const teams = battle.teams;
     const event = battleJSON.event;
@@ -90,7 +138,7 @@ const processBattle3v3 = (battleJSON, playerTag) => {
     let playerInTeam = null;
     
     teams.forEach((team, teamIndex) => {
-        const player = team.find(p => p.tag === playerTag);
+        const player = team.find(p => normalizeTag(p.tag) === normalizeTag(playerTag));
         if (player) {
             playerTeamIndex = teamIndex;
             playerInTeam = player;
@@ -103,12 +151,83 @@ const processBattle3v3 = (battleJSON, playerTag) => {
     } else {
         winningTeamIndex = playerTeamIndex === 0 ? 1 : 0;
     }
+    if(winningTeamIndex === -1){
+        console.log("No player found in the battle, something is wrong", teams[0], teams[1], playerTag);
+        return;
+    }
 
-    //need to update the database based on the battle data
     
+    // Process winning team
+    const winningTeam = teams[winningTeamIndex];
+    if (winningTeam && winningTeam.length > 0) {
+        for (let i = 0; i < winningTeam.length; i++) {
+            brawlerWin(winningTeam[i].brawler.name, map, mode);
+        }
+    } else {
+        console.warn(`Winning team at index ${winningTeamIndex} is undefined or empty`);
+    }
+    
+    // Process losing team
+    const losingTeamIndex = winningTeamIndex === 0 ? 1 : 0;
+    const losingTeam = teams[losingTeamIndex];
+    if (losingTeam && losingTeam.length > 0) {
+        for (let i = 0; i < losingTeam.length; i++) {
+            brawlerLoss(losingTeam[i].brawler.name, map, mode);
+        }
+    } else {
+        console.warn(`Losing team at index ${losingTeamIndex} is undefined or empty`);
+    }
+    //need to update the database based on the battle data
+    if (teams[0] && teams[1]) {
+        const team1Brawlers = teams[0].map(player => player.brawler.name);
+        const team2Brawlers = teams[1].map(player => player.brawler.name);
+        const winner = winningTeamIndex === 0 ? 'team1' : 'team2';
+        
+        const battleData = new Battle({
+            team1: team1Brawlers,
+            team2: team2Brawlers,
+            winner: winner,
+            map: map,
+            mode: mode
+        });
+        await battleData.save();
+    } else {
+        console.warn('Cannot save battle data: one or both teams are undefined');
+    }
+}
+
+const getTotalBrawlerWins = async (brawlerName) => {
+    const brawler = await AggregateBrawler.findOne({ brawler: brawlerName });
+    return brawler.wins;
+}
+const getTotalBrawlerLosses = async (brawlerName) => {
+    const brawler = await AggregateBrawler.findOne({ brawler: brawlerName });
+    return brawler.losses;
+}
+
+const getTotalBrawlerWinsMap = async (brawlerName, map) => {
+    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, map: map });
+    let totalWins = 0;
+    for(let i =0; i < mapsInModes.length; i++){ 
+        totalWins += mapsInModes[i].wins;
+    }
+    return totalWins;    
+}
+const getTotalBrawlerLossesMap = async (brawlerName, map) => {
+    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, map: map });
+    let totalLosses = 0;
+    for(let i =0; i < mapsInModes.length; i++){ 
+        totalLosses += mapsInModes[i].losses;
+    }
+    return totalLosses;
 }
 
 module.exports = {
-    getBattlesFromPlayerID,
-    processBattle3v3
+    processBattle3v3,
+    getTopPlayerIDs,
+    processUser,
+    getTotalBrawlerWins,
+    getTotalBrawlerLosses,
+    getTotalBrawlerWinsMap,
+    getTotalBrawlerLossesMap
 }
