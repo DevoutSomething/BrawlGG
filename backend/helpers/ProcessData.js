@@ -34,6 +34,30 @@ const getTopPlayerIDs = async () => {
     return playerIDs;
 }
 
+const getOneTopPlayerID = async () => { 
+    let data;
+    try {
+        const response = await fetch(
+        `${process.env.BRAWL_URL_RANKINGS}?limit=1`,
+        {
+            headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${process.env.API_KEY_BRAWL}`,
+            },
+        }
+        );
+        data = await response.json();   
+    }catch (error) {
+        console.error("Error:", error);
+    }
+    if (!data) {
+        throw new Error("Unable to fetch data");
+    }
+    let items = data.items;
+    let playerID = items[0].tag;
+    return playerID;
+}
+
 const processUser = async (playerTag) => { 
     //get the top 100 battles for the user and process them depending on the mode
     const response = await fetch(
@@ -181,8 +205,24 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
     }
     //need to update the database based on the battle data
     if (teams[0] && teams[1]) {
-        const team1Brawlers = teams[0].map(player => player.brawler.name);
-        const team2Brawlers = teams[1].map(player => player.brawler.name);
+        const team1Brawlers = teams[0]
+            .filter(player => player && player.brawler && player.brawler.name)
+            .map(player => player.brawler.name);
+        const team2Brawlers = teams[1]
+            .filter(player => player && player.brawler && player.brawler.name)
+            .map(player => player.brawler.name);
+
+        if (team1Brawlers.length !== 3 || team2Brawlers.length !== 3) {
+            console.warn('Invalid team size or missing brawler names:', {
+                team1: teams[0],
+                team2: teams[1],
+                team1Brawlers,
+                team2Brawlers,
+                battleJSON
+            });
+            return; // skip saving this battle
+        }
+        
         const winner = winningTeamIndex === 0 ? 'team1' : 'team2';
         
         const battleData = new Battle({
@@ -231,6 +271,67 @@ const getTotalBrawlerLossesMode = async (brawlerName, mode) => {
     return totalLosses;
 }
 
+const addMassToDB = async () => {
+    let seen = new Set();
+    let unSeen = [];
+    const playersToProcess = 5000 
+    let curPlayerID = await getOneTopPlayerID();
+    seen.add(curPlayerID);
+    for(let i = 0; i < playersToProcess; i++){
+        console.log(i);
+        let modifitedPlayerID = "23" + curPlayerID.slice(1);
+        const lastBattle = await processUserReturnLastBattle(modifitedPlayerID);
+        if(lastBattle.event.mode === "soloShowdown"){
+
+        }
+        if(threeVThreeSet.has(lastBattle.event.mode)){
+            const team1 = lastBattle.battle.teams[0];
+            const team2 = lastBattle.battle.teams[1];
+            for(let j = 0; j < team1.length; j++){ 
+                if(!seen.has(team1[j].tag)){
+                    unSeen.push(team1[j].tag);
+                }
+                if(!seen.has(team2[j].tag)){
+                    unSeen.push(team2[j].tag);
+                }
+            }
+        }
+        seen.add(curPlayerID);
+        console.log(curPlayerID + " finished processing");
+        curPlayerID = unSeen.pop();
+    }
+}
+
+const processUserReturnLastBattle = async (playerTag) => { 
+    const response = await fetch(
+        `${process.env.BRAWL_URL_PLAYERS}%${playerTag}/battlelog`,
+        {
+            headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${process.env.API_KEY_BRAWL}`,
+                "Cache-Control": "max-age=60",
+            },
+        }
+    );
+    if (!response.ok) {
+        throw new Error(`User not found or API error: ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data) {
+        throw new Error("Unable to fetch data");
+    }
+    const items = data.items;
+    for (let i = 0; i < items.length; i++) {
+        const event = items[i].event;
+        if (threeVThreeSet.has(event.mode)) {
+            await processBattle3v3(items[i], playerTag);
+        }
+        if (event.mode === "soloShowdown") {
+            processBattleSoloShowdown(items[i], playerTag);
+        }
+    }
+    return items[items.length - 1];
+}
 module.exports = {
     processBattle3v3,
     getTopPlayerIDs,
@@ -238,5 +339,6 @@ module.exports = {
     getTotalBrawlerWins,
     getTotalBrawlerLosses,
     getTotalBrawlerWinsMode,
-    getTotalBrawlerLossesMode
+    getTotalBrawlerLossesMode,
+    addMassToDB
 }

@@ -4,7 +4,7 @@ require("dotenv").config();
 const AggregateBrawler = require('../schema/aggregateBrawler');
 const AggregateMap = require('../schema/aggregateMap');
 const Battle = require('../schema/battle');
-const { getTopPlayerIDs, processUser, getTotalBrawlerWins, getTotalBrawlerLosses, getTotalBrawlerWinsMode, getTotalBrawlerLossesMode } = require('../helpers/ProcessData');
+const { getTopPlayerIDs, processUser, getTotalBrawlerWins, getTotalBrawlerLosses, getTotalBrawlerWinsMode, getTotalBrawlerLossesMode, addMassToDB } = require('../helpers/ProcessData');
 
 router.get("/", (req, res) => {
   res.json({ message: "Route avaliable" });
@@ -34,6 +34,15 @@ router.post("/addTop", async (req, res) => {
     res.status(500).json({ message: "Something went wrong adding top players", error: err });
   }
 });
+
+router.post("/addMass", async (req, res) => {
+  try{ 
+    await addMassToDB()
+    res.json({ message: "Mass added" });
+  } catch (err) {
+    res.status(500).json({ message: "Something went wrong adding mass", error: err });
+  }
+})
 
 router.get("/getBrawlerStats", async (req, res) => {
   try {
