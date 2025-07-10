@@ -47,7 +47,7 @@ const processUser = async (playerTag) => {
         }
     );
     if (!response.ok) {
-        throw new Error("user not found");
+        throw new Error(`User not found or API error: ${response.status}`);
     }
     const data = await response.json();
     if (!data) {
@@ -57,7 +57,7 @@ const processUser = async (playerTag) => {
     for (let i = 0; i < items.length; i++) {
         const event = items[i].event;
         if (threeVThreeSet.has(event.mode)) {
-            processBattle3v3(items[i], playerTag);
+            await processBattle3v3(items[i], playerTag);
         }
         if (event.mode === "soloShowdown") {
             processBattleSoloShowdown(items[i], playerTag);
@@ -66,8 +66,8 @@ const processUser = async (playerTag) => {
 }
 
 const processBattleSoloShowdown = (battleJSON) => { 
-    const mode = "soloShowdown";
-    const map = battleJSON.event.map;
+    const mode = "SOLOSHOWDOWN";
+    const map = battleJSON.event.map.toUpperCase();
     const players = battleJSON.battle.players;
     for (let i = 0; i < players.length; i++) {
         if (i <= 4){
@@ -129,6 +129,8 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
     const teams = battle.teams;
     const event = battleJSON.event;
     const {mode, map} = event;
+    const upperMode = mode.toUpperCase();
+    const upperMap = map.toUpperCase();
     let win = false;
     if (battle.result === "victory") { 
         win = true;
@@ -161,7 +163,7 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
     const winningTeam = teams[winningTeamIndex];
     if (winningTeam && winningTeam.length > 0) {
         for (let i = 0; i < winningTeam.length; i++) {
-            brawlerWin(winningTeam[i].brawler.name, map, mode);
+            brawlerWin(winningTeam[i].brawler.name, upperMap, upperMode);
         }
     } else {
         console.warn(`Winning team at index ${winningTeamIndex} is undefined or empty`);
@@ -172,7 +174,7 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
     const losingTeam = teams[losingTeamIndex];
     if (losingTeam && losingTeam.length > 0) {
         for (let i = 0; i < losingTeam.length; i++) {
-            brawlerLoss(losingTeam[i].brawler.name, map, mode);
+            brawlerLoss(losingTeam[i].brawler.name, upperMap, upperMode);
         }
     } else {
         console.warn(`Losing team at index ${losingTeamIndex} is undefined or empty`);
@@ -187,8 +189,8 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
             team1: team1Brawlers,
             team2: team2Brawlers,
             winner: winner,
-            map: map,
-            mode: mode
+            map: upperMap,
+            mode: upperMode
         });
         await battleData.save();
     } else {
@@ -197,24 +199,31 @@ const processBattle3v3 = async (battleJSON, playerTag) => {
 }
 
 const getTotalBrawlerWins = async (brawlerName) => {
+    brawlerName = brawlerName.toUpperCase();
     const brawler = await AggregateBrawler.findOne({ brawler: brawlerName });
     return brawler.wins;
 }
 const getTotalBrawlerLosses = async (brawlerName) => {
+    brawlerName = brawlerName.toUpperCase();
     const brawler = await AggregateBrawler.findOne({ brawler: brawlerName });
     return brawler.losses;
 }
 
-const getTotalBrawlerWinsMap = async (brawlerName, map) => {
-    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, map: map });
+
+const getTotalBrawlerWinsMode = async (brawlerName, mode) => {
+    brawlerName = brawlerName.toUpperCase();
+    mode = mode.toUpperCase();
+    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, mode: mode });
     let totalWins = 0;
     for(let i =0; i < mapsInModes.length; i++){ 
         totalWins += mapsInModes[i].wins;
     }
     return totalWins;    
 }
-const getTotalBrawlerLossesMap = async (brawlerName, map) => {
-    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, map: map });
+const getTotalBrawlerLossesMode = async (brawlerName, mode) => {
+    brawlerName = brawlerName.toUpperCase();
+    mode = mode.toUpperCase();
+    const mapsInModes = await AggregateMap.find({ brawler: brawlerName, mode: mode });
     let totalLosses = 0;
     for(let i =0; i < mapsInModes.length; i++){ 
         totalLosses += mapsInModes[i].losses;
@@ -228,6 +237,6 @@ module.exports = {
     processUser,
     getTotalBrawlerWins,
     getTotalBrawlerLosses,
-    getTotalBrawlerWinsMap,
-    getTotalBrawlerLossesMap
+    getTotalBrawlerWinsMode,
+    getTotalBrawlerLossesMode
 }
