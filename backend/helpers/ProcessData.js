@@ -88,7 +88,7 @@ const processUser = async (playerTag) => {
       processBattleSoloShowdown(items[i], playerTag);
     }
     if (event.mode === "trioShowdown" || event.mode === "duoShowdown") {
-      processDuoShowdown(items[i], playerTag);
+      processDuoTrioShowdown(items[i], playerTag), event.mode;
     }
   }
 };
@@ -106,15 +106,16 @@ const processBattleSoloShowdown = (battleJSON) => {
   }
 };
 
-const processDuoShowdown = (battleJSON, currentID) => {
-  const mode = "DUOSHOWDOWN";
+const processDuoTrioShowdown = (battleJSON, currentID, lowerMode) => {
+  const mode = lowerMode.toUpperCase();
   const map = battleJSON.event.map.toUpperCase();
   const teams = battleJSON.battle.teams;
   let winningIndex = -1;
   for (let i = 0; i < teams.length; i++) {
     for (let j = 0; j < teams[i].length; j++) {
       let currentTeam = teams[i];
-      if (currentTeam[j].tag === currentID) {
+      const formatted = "#" + currentID.slice(2);
+      if (currentTeam[j].tag === formatted) {
         winningIndex = i;
         break;
       }
@@ -123,7 +124,10 @@ const processDuoShowdown = (battleJSON, currentID) => {
       break;
     }
   }
-
+  if (winningIndex == -1) {
+    console.log("something went wrong");
+    return;
+  }
   for (let i = 0; i < teams.length; i++) {
     for (let j = 0; j < teams[i].length; j++) {
       let player = teams[i][j];
@@ -331,8 +335,6 @@ const addMassToDB = async () => {
     console.log(i);
     let modifitedPlayerID = "23" + curPlayerID.slice(1);
     const lastBattle = await processUserReturnLastBattle(modifitedPlayerID);
-    if (lastBattle.event.mode === "soloShowdown") {
-    }
     if (threeVThreeSet.has(lastBattle.event.mode)) {
       const team1 = lastBattle.battle.teams[0];
       const team2 = lastBattle.battle.teams[1];
@@ -377,6 +379,9 @@ const processUserReturnLastBattle = async (playerTag) => {
     }
     if (event.mode === "soloShowdown") {
       processBattleSoloShowdown(items[i], playerTag);
+    }
+    if (event.mode === "trioShowdown" || event.mode === "duoShowdown") {
+      processDuoTrioShowdown(items[i], playerTag, event.mode);
     }
   }
   return items[items.length - 1];
